@@ -1,5 +1,5 @@
 
-<img width="1350" height="1350" alt="icon" src="https://github.com/user-attachments/assets/4beee6f3-4aad-40b6-8b6b-4bc5640e4f95" />
+<img width="350" height="350" alt="icon" src="https://github.com/user-attachments/assets/4beee6f3-4aad-40b6-8b6b-4bc5640e4f95" />
 
 <div align="center" style="padding-top: 20px">
   <h1 align="center">Yappr</h1>
