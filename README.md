@@ -1,18 +1,15 @@
 
-<img width="6250" height="6250" alt="icon" src="https://github.com/user-attachments/assets/4beee6f3-4aad-40b6-8b6b-4bc5640e4f95" />
+<img width="1350" height="1350" alt="icon" src="https://github.com/user-attachments/assets/4beee6f3-4aad-40b6-8b6b-4bc5640e4f95" />
 
 <div align="center" style="padding-top: 20px">
   <h1 align="center">Yappr</h1>
   <p align="center">Yappr is a simple and fun platform for sending and receiving anonymous messages.</p>
 </div>
 
----
-
 ## Overview
 Yappr allows users to connect in a unique way by exchanging **anonymous messages**.  
 It’s designed to be lightweight, user-friendly, and engaging — perfect for sharing thoughts, feedback, or just having fun without revealing your identity.
 
----
 
 ## Features
 - **Anonymous Messaging** – Send and receive messages without exposing your identity.
@@ -20,8 +17,6 @@ It’s designed to be lightweight, user-friendly, and engaging — perfect for s
 - **Cross-Platform** – Works seamlessly on desktop and mobile.
 - **Lightweight & Fast** – Optimized for performance.
 - **Notifications** – Get notified when someone sends you a new message.
-
----
 
 ## Contributing
 
