@@ -4,8 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Send, Hash, Users, Settings, Plus, Volume2, Menu, X } from "lucide-react";
-import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
+import { Send, Settings } from "lucide-react";
+import { Navbar } from "@/components/navbar";
 
 interface Message {
     id: string;
@@ -121,30 +121,14 @@ export default function PublicChatPage() {
   return (
         <div className="flex h-screen bg-background relative">
             {/* Top Navigation */}
-            <div className="fixed top-0 left-0 right-0 h-16 bg-background/95 backdrop-blur-sm border-b z-50 flex items-center px-4 md:px-6">
-                <div className="flex items-center gap-2 md:gap-3">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="lg:hidden h-8 w-8"
-                        onClick={() => setSidebarOpen(!sidebarOpen)}
-                    >
-                        {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-                    </Button>
-                    <div className="text-lg md:text-xl font-bold text-primary">Yappr</div>
-                    <div className="h-6 w-px bg-border hidden sm:block"></div>
-                    <h1 className="font-semibold text-foreground hidden sm:block">{currentServer?.name}</h1>
-                    <span className="text-sm text-muted-foreground hidden md:block">• {currentChannel?.name}</span>
-                </div>
-                <div className="ml-auto flex items-center gap-2 md:gap-3">
-                    <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="hidden md:inline">{onlineUsers.length} yappers online</span>
-                        <span className="md:hidden">{onlineUsers.length}</span>
-                    </div>
-                    <AnimatedThemeToggler />
-                </div>
-            </div>
+            <Navbar
+                sidebarOpen={sidebarOpen}
+                onSidebarToggle={() => setSidebarOpen(!sidebarOpen)}
+                serverName={currentServer?.name}
+                channelName={currentChannel?.name}
+                onlineUsersCount={onlineUsers.length}
+                showMobileMenu={true}
+            />
 
             {/* Mobile Sidebar Overlay */}
             {sidebarOpen && (
