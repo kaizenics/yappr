@@ -42,11 +42,14 @@
   --radius-xl: calc(var(--radius) + 4px);
   --animate-shiny-text: shiny-text 8s infinite;
   @keyframes shiny-text {
-  0%, 90%, 100% {
-    background-position: calc(-100% - var(--shiny-width)) 0;
+    0%,
+    90%,
+    100% {
+      background-position: calc(-100% - var(--shiny-width)) 0;
     }
-  30%, 60% {
-    background-position: calc(100% + var(--shiny-width)) 0;
+    30%,
+    60% {
+      background-position: calc(100% + var(--shiny-width)) 0;
     }
   }
 }
@@ -87,7 +90,7 @@
 }
 
 .dark {
-  --background: oklch(0.178 0.010 285.823);
+  --background: oklch(0.178 0.01 285.823);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.21 0.006 285.885);
   --card-foreground: oklch(0.985 0 0);
@@ -129,8 +132,8 @@
   }
 }
 
-
-::view-transition-old(root), ::view-transition-new(root) {
-    animation: none;
-    mix-blend-mode: normal;
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
