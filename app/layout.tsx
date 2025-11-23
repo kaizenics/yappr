@@ -9,7 +9,8 @@ const manrope = Manrope({
 
 export const metadata: Metadata = {
   title: "Yappr",
-  description: "Yappr is a platform for sending and receiving anonymous messages.",
+  description:
+    "Yappr is a platform for sending and receiving anonymous messages.",
 };
 
 export default function RootLayout({
@@ -19,16 +20,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={manrope.className}
-      >
+      <body className={manrope.className}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
-        {children}
+          {children}
         </ThemeProvider>
       </body>
     </html>
