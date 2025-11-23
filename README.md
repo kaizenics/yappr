@@ -28,7 +28,7 @@ We welcome contributions to improve `Yappr`!
 2. **Clone Your Fork** - Run the following command in your terminal:
 ```bash
 git clone https://github.com/kaizenics/yappr.git
-cd shadcn-cookies
+cd yappr
 ```
 3. **Create a New Branch** - Name it something relevant. e.g., `feature-dev` or `variant-staging`:
 ```bash
