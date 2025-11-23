@@ -64,7 +64,7 @@ export function AgeVerificationDialog({
 
         <div className="my-4 rounded-lg bg-muted/50 p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
             <div className="text-sm text-muted-foreground">
               <p className="font-medium text-foreground mb-1">
                 Important Notice:
