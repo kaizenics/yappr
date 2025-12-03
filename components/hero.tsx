@@ -30,8 +30,10 @@ export function Hero() {
   const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
+    let isMounted = true;
+
     const updateUserMetadata = async () => {
-      if (user) {
+      if (user && isMounted) {
         setIsLoading(null);
         setShowAuthDialog(false);
 
@@ -46,13 +48,15 @@ export function Hero() {
                 display_name: pendingName,
               },
             });
-            if (!error) {
+            if (!error && isMounted) {
               localStorage.removeItem("pending_display_name");
             }
           } catch (err) {
-            console.error("Failed to update user metadata:", err);
+            if (isMounted) {
+              console.error("Failed to update user metadata:", err);
+            }
           }
-        } else if (pendingName) {
+        } else if (pendingName && isMounted) {
           localStorage.removeItem("pending_display_name");
         }
       }
@@ -61,6 +65,10 @@ export function Hero() {
     if (!authLoading && user) {
       updateUserMetadata();
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [user, authLoading]);
 
   const handleOAuthSignIn = async (provider: "google" | "github") => {
