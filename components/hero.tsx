@@ -218,7 +218,7 @@ export function Hero() {
               <Button
                 size="lg"
                 className="w-full rounded-full px-6 py-4 text-base"
-                onClick={() => router.push("/chat")}
+                onClick={() => router.push("/chat?autoSearch=true")}
               >
                 Find a Yapper
                 <ArrowRightIcon className="ml-2 h-4 w-4" />
