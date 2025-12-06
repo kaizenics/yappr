@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -17,45 +17,240 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-
-interface Message {
-  id: string;
-  content: string;
-  timestamp: Date;
-  isUser: boolean;
-  name: string;
-}
+import { useRealtime } from "@/hooks/useRealtime";
+import { useAuth } from "@/components/providers/auth-provider";
+import {
+  joinMatchQueue,
+  leaveMatchQueue,
+  getActiveMatch,
+  endMatch,
+  type Match,
+} from "@/lib/matching";
+import { supabase } from "@/lib/supabase";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import { useSearchParams } from "next/navigation";
+import { TypingIndicator } from "@/app/public/components/typing-indicator";
 
 export default function PublicChatPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      content: "Hello! Welcome to Yappr. How can I help you today?",
-      timestamp: new Date(Date.now() - 5 * 60 * 1000),
-      isUser: false,
-      name: "Yappr AI",
-    },
-    {
-      id: "2",
-      content: "Hi there! I'm excited to try out this chat interface.",
-      timestamp: new Date(Date.now() - 3 * 60 * 1000),
-      isUser: true,
-      name: "You",
-    },
-    {
-      id: "3",
-      content:
-        "That's great! Feel free to ask me anything or just have a conversation. I'm here to help!",
-      timestamp: new Date(Date.now() - 1 * 60 * 1000),
-      isUser: false,
-      name: "Yappr AI",
-    },
-  ]);
-  const [newMessage, setNewMessage] = useState("");
-  const [currentChatter, setCurrentChatter] = useState("Yappr AI");
+  const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const autoSearch = searchParams.get("autoSearch") === "true";
+  const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
+  const [currentChatter, setCurrentChatter] = useState<string>("Searching for a yapper...");
   const [isSearching, setIsSearching] = useState(false);
+  const [matchQueueChannel, setMatchQueueChannel] = useState<RealtimeChannel | null>(null);
+  const [newMessage, setNewMessage] = useState("");
+  const [showNoUsersMessage, setShowNoUsersMessage] = useState(false);
+  const [searchStartTime, setSearchStartTime] = useState<number | null>(null);
+  const [hasAutoSearched, setHasAutoSearched] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Use realtime hook for messaging
+  const {
+    messages: realtimeMessages,
+    isConnected,
+    sendMessage: sendRealtimeMessage,
+    sendTypingIndicator,
+    stopTypingIndicator,
+    typingUsers,
+  } = useRealtime(currentMatch?.channel_id || "");
+
+  // Load active match on mount
+  useEffect(() => {
+    if (!user) return;
+
+    const loadActiveMatch = async () => {
+      const match = await getActiveMatch(user.id);
+      if (match) {
+        setCurrentMatch(match);
+        const matchedUserId = match.user1_id === user.id ? match.user2_id : match.user1_id;
+        // Fetch matched user info
+        const { data: matchedUser } = await supabase
+          .from("profiles")
+          .select("display_name, username")
+          .eq("id", matchedUserId)
+          .single();
+        
+        if (matchedUser) {
+          setCurrentChatter(matchedUser.display_name || matchedUser.username || "Anonymous");
+        } else {
+          setCurrentChatter("Anonymous");
+        }
+      } else {
+        setCurrentChatter("Searching for a yapper...");
+      }
+    };
+
+    loadActiveMatch();
+  }, [user]);
+
+  const handleSearchNewYapper = useCallback(async () => {
+    if (!user) return;
+
+    setIsSearching(true);
+    setShowNoUsersMessage(false);
+    setSearchStartTime(Date.now());
+    setCurrentChatter("Searching for a yapper...");
+
+    // End current match if exists
+    if (currentMatch) {
+      await endMatch(currentMatch.id);
+      setCurrentMatch(null);
+    }
+
+    // Leave existing queue if any
+    if (matchQueueChannel) {
+      await leaveMatchQueue(matchQueueChannel);
+      setMatchQueueChannel(null);
+    }
+
+    // Get username
+    const username =
+      user.user_metadata?.display_name ||
+      user.email?.split("@")[0] ||
+      "User";
+
+    // Join match queue
+    try {
+      const handleMatchFound = async (matchedUserId: string) => {
+        const match = await getActiveMatch(user.id);
+        if (match) {
+          setCurrentMatch(match);
+          setIsSearching(false);
+          setShowNoUsersMessage(false);
+          setSearchStartTime(null);
+          
+          if (matchQueueChannel) {
+            await leaveMatchQueue(matchQueueChannel);
+            setMatchQueueChannel(null);
+          }
+
+          const { data: matchedUser } = await supabase
+            .from("profiles")
+            .select("display_name, username")
+            .eq("id", matchedUserId)
+            .single();
+          
+          if (matchedUser) {
+            setCurrentChatter(matchedUser.display_name || matchedUser.username || "Anonymous");
+          } else {
+            setCurrentChatter("Anonymous");
+          }
+        }
+      };
+
+      const queueChannel = await joinMatchQueue(user.id, username, handleMatchFound);
+      setMatchQueueChannel(queueChannel);
+
+      // Check for immediate match
+      const existingMatch = await getActiveMatch(user.id);
+      if (existingMatch) {
+        setCurrentMatch(existingMatch);
+        setIsSearching(false);
+        setShowNoUsersMessage(false);
+        setSearchStartTime(null);
+        await leaveMatchQueue(queueChannel);
+        setMatchQueueChannel(null);
+
+        const matchedUserId = existingMatch.user1_id === user.id ? existingMatch.user2_id : existingMatch.user1_id;
+        const { data: matchedUser } = await supabase
+          .from("profiles")
+          .select("display_name, username")
+          .eq("id", matchedUserId)
+          .single();
+        
+        if (matchedUser) {
+          setCurrentChatter(matchedUser.display_name || matchedUser.username || "Anonymous");
+        } else {
+          setCurrentChatter("Anonymous");
+        }
+      }
+    } catch (error) {
+      console.error("Error joining match queue:", error);
+      setIsSearching(false);
+      setSearchStartTime(null);
+    }
+  }, [user, currentMatch, matchQueueChannel]);
+
+  // Auto-start search when coming from hero button
+  useEffect(() => {
+    if (!user || !autoSearch || hasAutoSearched || currentMatch) return;
+
+    // Small delay to ensure component is ready
+    const timer = setTimeout(() => {
+      setHasAutoSearched(true);
+      handleSearchNewYapper();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [user, autoSearch, hasAutoSearched, currentMatch, handleSearchNewYapper]);
+
+  // Check for no users after 10 seconds of searching
+  useEffect(() => {
+    if (!isSearching || !matchQueueChannel || !searchStartTime) return;
+
+    const checkForUsers = () => {
+      const elapsed = Date.now() - searchStartTime;
+      if (elapsed >= 10000) {
+        // Check if there are other users in the queue
+        const state = matchQueueChannel.presenceState();
+        const otherUsers = Object.keys(state).filter((key) => key !== user?.id);
+        
+        if (otherUsers.length === 0) {
+          setShowNoUsersMessage(true);
+        } else {
+          setShowNoUsersMessage(false);
+        }
+      }
+    };
+
+    // Check immediately and then every second
+    checkForUsers();
+    const interval = setInterval(checkForUsers, 1000);
+    
+    return () => clearInterval(interval);
+  }, [isSearching, matchQueueChannel, searchStartTime, user]);
+
+  // Listen for new matches via presence
+  useEffect(() => {
+    if (!user || !matchQueueChannel) return;
+
+    const handleMatchFound = async () => {
+      const match = await getActiveMatch(user.id);
+      if (match && match.id !== currentMatch?.id) {
+        setCurrentMatch(match);
+        setIsSearching(false);
+        setShowNoUsersMessage(false);
+        setSearchStartTime(null);
+        
+        // Leave queue
+        if (matchQueueChannel) {
+          await leaveMatchQueue(matchQueueChannel);
+          setMatchQueueChannel(null);
+        }
+
+        // Fetch matched user info
+        const matchedUserId = match.user1_id === user.id ? match.user2_id : match.user1_id;
+        const { data: matchedUser } = await supabase
+          .from("profiles")
+          .select("display_name, username")
+          .eq("id", matchedUserId)
+          .single();
+        
+        if (matchedUser) {
+          setCurrentChatter(matchedUser.display_name || matchedUser.username || "Anonymous");
+        } else {
+          setCurrentChatter("Anonymous");
+        }
+      }
+    };
+
+    // Poll for matches less frequently to reduce API calls
+    // Since matches are created via presence, we don't need to poll every second
+    const interval = setInterval(handleMatchFound, 3000);
+    return () => clearInterval(interval);
+  }, [user, matchQueueChannel, currentMatch]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -63,46 +258,17 @@ export default function PublicChatPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [realtimeMessages]);
 
-  const handleSendMessage = () => {
-    if (!newMessage.trim()) return;
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !currentMatch || !user) return;
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: newMessage,
-      timestamp: new Date(),
-      isUser: true,
-      name: "You",
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setNewMessage("");
-
-    // Simulate response from current yapper after a short delay
-    setTimeout(() => {
-      const responses = [
-        "That's interesting! Tell me more.",
-        "I see what you mean. What do you think about that?",
-        "Thanks for sharing! How was your day?",
-        "Cool! I was just thinking about something similar.",
-        "Nice to meet you! Where are you from?",
-        "That sounds great! What are your hobbies?",
-        "Awesome! I love chatting with new people.",
-      ];
-
-      const randomResponse =
-        responses[Math.floor(Math.random() * responses.length)];
-
-      const yapperMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: randomResponse,
-        timestamp: new Date(),
-        isUser: false,
-        name: currentChatter,
-      };
-      setMessages((prev) => [...prev, yapperMessage]);
-    }, 1000);
+    try {
+      await sendRealtimeMessage(newMessage.trim());
+      setNewMessage("");
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -112,47 +278,23 @@ export default function PublicChatPage() {
     }
   };
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString("en-US", {
+  const formatTime = (date: Date | string) => {
+    const dateObj = typeof date === "string" ? new Date(date) : date;
+    return dateObj.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     });
   };
 
-  const handleSearchNewYapper = () => {
-    setIsSearching(true);
-
-    // Simulate searching for a new yapper
-    setTimeout(() => {
-      const randomYappers = [
-        "Alex_2024",
-        "YapLover99",
-        "Anonymous_User",
-        "FriendlyStranger",
-        "TalkativeToday",
-        "RandomYapper",
-        "CoolPerson123",
-      ];
-
-      const newYapper =
-        randomYappers[Math.floor(Math.random() * randomYappers.length)];
-      setCurrentChatter(newYapper);
-
-      // Clear previous messages and start fresh
-      setMessages([
-        {
-          id: "welcome",
-          content: `Hello! You're now connected with ${newYapper}. Say hi!`,
-          timestamp: new Date(),
-          isUser: false,
-          name: "System",
-        },
-      ]);
-
-      setIsSearching(false);
-    }, 2000); // 2 second delay to simulate searching
-  };
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (matchQueueChannel) {
+        leaveMatchQueue(matchQueueChannel);
+      }
+    };
+  }, [matchQueueChannel]);
 
   return (
     <>
@@ -167,10 +309,26 @@ export default function PublicChatPage() {
                 </h1>
                 <div className="flex items-center gap-2">
                   <div className="relative">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    {isSearching ? (
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                    ) : currentMatch ? (
+                      isConnected ? (
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      ) : (
+                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                      )
+                    ) : (
+                      <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                    )}
                   </div>
                   <span className="text-sm text-muted-foreground">
-                    {isSearching ? "Searching..." : "Online"}
+                    {isSearching
+                      ? "Searching..."
+                      : currentMatch
+                      ? isConnected
+                        ? "Online"
+                        : "Disconnected"
+                      : "Not connected"}
                   </span>
                 </div>
               </div>
@@ -184,7 +342,7 @@ export default function PublicChatPage() {
                       className="flex items-center gap-2"
                     >
                       <Users className="h-4 w-4" />
-                      New Yapper
+                      Find a New Yapper
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
@@ -213,49 +371,101 @@ export default function PublicChatPage() {
         {/* Chat Messages Area */}
         <div className="flex-1 overflow-hidden">
           <div className="h-full overflow-y-auto px-4 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="max-w-4xl mx-auto space-y-6">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={cn(
-                    "flex w-full flex-col",
-                    message.isUser ? "items-end" : "items-start"
-                  )}
-                >
-                  <p
-                    className={cn(
-                      "text-sm font-semibold mb-2",
-                      message.isUser ? "text-right" : "text-left"
-                    )}
-                  >
-                    {message.name}
+            {/* Disconnected Banner */}
+            {currentMatch && !isConnected && !isSearching && (
+              <div className="max-w-4xl mx-auto mb-4">
+                <div className="bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3 flex items-center gap-3">
+                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                  <p className="text-sm text-destructive font-medium">
+                    Connection lost. Attempting to reconnect...
                   </p>
-                  <div
-                    className={cn(
-                      "max-w-[70%] rounded-2xl px-4 py-3 shadow-sm",
-                      "transition-all duration-200 ease-in-out",
-                      "animate-in slide-in-from-bottom-2 fade-in duration-300",
-                      message.isUser
-                        ? "bg-blue-500 text-white"
-                        : "bg-card text-card-foreground border"
-                    )}
-                  >
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                      {message.content}
-                    </p>
-                    <p
-                      className={cn(
-                        "text-xs mt-2 opacity-70",
-                        message.isUser ? "text-right" : "text-left"
-                      )}
-                    >
-                      {formatTime(message.timestamp)}
-                    </p>
-                  </div>
                 </div>
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
+              </div>
+            )}
+            {!currentMatch && !isSearching && (
+              <div className="flex items-center justify-center h-full min-h-[400px]">
+                <p className="text-muted-foreground text-center">
+                  Click "Find a New Yapper" to start chatting!
+                </p>
+              </div>
+            )}
+            {isSearching && (
+              <div className="flex items-center justify-center h-full min-h-[400px]">
+                <div className="text-center">
+                  <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-muted-foreground mb-2">Searching for available yappers...</p>
+                  {showNoUsersMessage && (
+                    <p className="text-sm text-muted-foreground/70">
+                      There are no online users at the moment. Still searching...
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            {currentMatch && realtimeMessages.length === 0 && !isSearching && (
+              <div className="flex items-center justify-center h-full min-h-[400px]">
+                <p className="text-muted-foreground text-center">
+                  You're connected with {currentChatter}. Say hi!
+                </p>
+              </div>
+            )}
+            {currentMatch && (
+              <div className="max-w-4xl mx-auto">
+                {realtimeMessages.length > 0 && (
+                  <div className="space-y-6">
+                    {realtimeMessages.map((message) => {
+                      const isUser = message.user_id === user?.id;
+                      return (
+                        <div
+                          key={message.id}
+                          className={cn(
+                            "flex w-full flex-col",
+                            isUser ? "items-end" : "items-start"
+                          )}
+                        >
+                          <p
+                            className={cn(
+                              "text-sm font-semibold mb-2",
+                              isUser ? "text-right" : "text-left"
+                            )}
+                          >
+                            {isUser ? "You" : message.username}
+                          </p>
+                          <div
+                            className={cn(
+                              "max-w-[70%] rounded-2xl px-4 py-3 shadow-sm",
+                              "transition-all duration-200 ease-in-out",
+                              "animate-in slide-in-from-bottom-2 fade-in duration-300",
+                              isUser
+                                ? "bg-blue-500 text-white"
+                                : "bg-card text-card-foreground border"
+                            )}
+                          >
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                              {message.content}
+                            </p>
+                            <p
+                              className={cn(
+                                "text-xs mt-2 opacity-70",
+                                isUser ? "text-right" : "text-left"
+                              )}
+                            >
+                              {formatTime(message.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {typingUsers && typingUsers.length > 0 && (
+                  <div className="mt-4">
+                    <TypingIndicator typingUsers={typingUsers} />
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -266,14 +476,31 @@ export default function PublicChatPage() {
               <Input
                 ref={inputRef}
                 value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
+                onChange={(e) => {
+                  setNewMessage(e.target.value);
+                  if (currentMatch && user) {
+                    sendTypingIndicator();
+                  }
+                }}
                 onKeyPress={handleKeyPress}
-                placeholder="Type your message..."
-                className="resize-none border-0 bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring min-h-[48px] rounded-2xl px-4 py-3 pr-12"
+                onBlur={() => {
+                  if (currentMatch && user) {
+                    stopTypingIndicator();
+                  }
+                }}
+                placeholder={
+                  !currentMatch
+                    ? "Find a yapper to start chatting..."
+                    : !isConnected
+                    ? "Disconnected. Reconnecting..."
+                    : "Type your message..."
+                }
+                disabled={!currentMatch || isSearching || !isConnected}
+                className="resize-none border-0 bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring min-h-[48px] rounded-2xl px-4 py-3 pr-12 disabled:opacity-50"
               />
               <Button
                 onClick={handleSendMessage}
-                disabled={!newMessage.trim()}
+                disabled={!newMessage.trim() || !currentMatch || isSearching || !isConnected}
                 size="icon"
                 className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-xl transition-all duration-200 ease-in-out hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
               >
